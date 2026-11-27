@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模型问答 · saa-stream-output</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light;
+
+      /* 字体：一套字族，中文用系统字体兜底 */
+      --app-font: "Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+
+      /* 品牌色：靛蓝。换色只改这里、--primary-hover、--primary-light 和 --ring-focus */
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-foreground: #ffffff;
+      --primary-light: rgb(79 70 229 / 0.1);
+
+      --background: #f4f4f6;
+      --surface: #ffffff;
+      --foreground: #2c2c2c;
+      --muted: #707070;
+      --border: #f7f7f8;
+      --border-strong: #eaeaea;
+      --border-focus: var(--primary);
+      --ring-focus: rgb(79 70 229 / 0.1);
+
+      --surface-overlay: #ffffff;
+      --elevation-popover: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+      --item-hover: #f4f4f6;
+      --secondary: #e7e8ec;
+      --secondary-hover: #dbdce2;
+      --background-hover: #e7e7ea;
+      --surface-hover: #f8f8fa;
+      --button-hover-surface: #f1f1f3;
+      --button-hover-page: #e4e4e7;
+      --button-hover: var(--button-hover-page);
+
+      --error: #fb2c36;
+      --error-text: #e7000b;
+      --error-bg: #fef2f2;
+      --error-border: #ffc9c9;
+      --error-strong: #c10007;
+
+      --radius: 0.75rem;
+    }
+
+    * { box-sizing: border-box; }
+
+    /* 品牌色块内的按钮悬停用浅一档底色 */
+    .bg-surface *,
+    .bg-surface-overlay * { --button-hover: var(--button-hover-surface); }
+
+    /* 细微且自动隐藏的滚动条：保留 4px 宽度，出现时不挤压内容 */
+    * { --scrollbar-thumb: transparent; }
+    *:hover { --scrollbar-thumb: color-mix(in srgb, var(--foreground) 16%, transparent); }
+    .is-scrolling { --scrollbar-thumb: color-mix(in srgb, var(--foreground) 28%, transparent); }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--foreground) 40%, transparent); }
+    @supports not selector(::-webkit-scrollbar) {
+      * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+      *:hover { scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent; }
+      .is-scrolling { scrollbar-color: color-mix(in srgb, var(--foreground) 28%, transparent) transparent; }
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: var(--app-font);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    button, textarea { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+    [hidden] { display: none !important; }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      max-width: 48rem;
+      height: 100vh;
+      height: 100dvh;
+      margin: 0 auto;
+    }
+
+    .page-header {
+      flex: none;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .page-header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    @media (min-width: 640px) { .page-header { padding: 20px 24px; } }
+
+    .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+    .endpoint-picker { position: relative; flex: none; }
+    .select-trigger {
+      display: flex;
+      height: 44px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--foreground);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    @media (min-width: 640px) { .select-trigger { height: 40px; } }
+    .select-trigger:focus-visible { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--ring-focus); }
+    .select-trigger[aria-expanded="true"] { border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--ring-focus); }
+    .select-trigger svg { width: 16px; height: 16px; flex: none; color: var(--muted); transition: transform 150ms ease; }
+    .select-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+    .select-list {
+      display: flex;
+      flex-direction: column;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 20;
+      width: max-content;
+      min-width: 100%;
+      max-width: calc(100vw - 32px);
+      max-height: 332px;
+      margin: 0;
+      padding: 4px;
+      gap: 4px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface-overlay);
+      box-shadow: var(--elevation-popover);
+      list-style: none;
+      opacity: 0;
+      transform: translateY(-4px) scale(0.95);
+      transform-origin: top right;
+      pointer-events: none;
+      transition: opacity 100ms ease-in, transform 100ms ease-in;
+    }
+    .select-list.is-open {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+      transition: opacity 150ms ease-out, transform 150ms ease-out;
+    }
+    .select-list:focus { outline: none; }
+    .select-option {
+      display: flex;
+      min-height: 40px;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      color: var(--foreground);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .select-option[aria-selected="true"] { font-weight: 500; }
+    .select-option.is-highlighted { background: var(--item-hover); }
+    .select-option svg { width: 16px; height: 16px; margin-left: auto; flex: none; color: var(--primary); visibility: hidden; }
+    .select-option[aria-selected="true"] svg { visibility: visible; }
+
+    .chat {
+      position: relative;
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      padding: 0 16px;
+    }
+    @media (min-width: 640px) { .chat { padding: 0 24px; } }
+
+    .messages {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      gap: 32px;
+      margin: 0;
+      padding: 8px 0 24px;
+      list-style: none;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .turn { min-width: 0; }
+
+    .user-bubble {
+      width: fit-content;
+      max-width: 80%;
+      margin-left: auto;
+      padding: 10px 16px;
+      border-radius: 24px;
+      background: var(--surface);
+      font-size: 16px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 639px) { .user-bubble { max-width: 85%; } }
+
+    .answer-wrap { max-width: 42rem; min-width: 0; }
+    .answer {
+      font-size: 16px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      text-wrap: pretty;
+    }
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.1em;
+      border-radius: 2px;
+      background: color-mix(in srgb, var(--foreground) 30%, transparent);
+      vertical-align: text-bottom;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      opacity: 0;
+      transition: opacity 150ms ease;
+    }
+    .turn:hover .actions,
+    .turn:focus-within .actions { opacity: 1; }
+    .stopped-label { margin-left: 4px; font-size: 12px; color: var(--muted); }
+
+    .icon-btn {
+      display: inline-flex;
+      width: 32px;
+      height: 32px;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+    .icon-btn:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); color: var(--foreground); }
+    .icon-btn svg { width: 16px; height: 16px; }
+
+    /* 键盘焦点用底色变化表示，不画额外的焦点环 */
+    button:focus-visible { outline: none; }
+    .icon-btn:focus-visible { background: color-mix(in srgb, var(--foreground) 8%, transparent); color: var(--foreground); }
+    .suggestion:focus-visible,
+    .outline-btn:focus-visible { background: var(--secondary); color: var(--foreground); }
+    .send-btn:focus-visible,
+    .scroll-btn:focus-visible { filter: brightness(0.92); }
+
+    .error-block { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+    .error-title { margin: 0; color: var(--error-text); font-size: 14px; font-weight: 500; }
+    .error-reason { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+    .outline-btn {
+      min-height: 40px;
+      padding: 8px 16px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--foreground);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 150ms ease;
+    }
+    .outline-btn:hover { background: var(--button-hover); }
+
+    .suggestions { flex: none; display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+    .suggestions-label { margin: 0; color: var(--muted); font-size: 14px; }
+    .suggestion {
+      align-self: flex-start;
+      max-width: 100%;
+      min-height: 40px;
+      padding: 8px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--foreground);
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: background-color 150ms ease;
+    }
+    .suggestion:hover { background: var(--button-hover); }
+
+    .scroll-hint {
+      position: absolute;
+      right: 0;
+      bottom: 92px;
+      left: 0;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .scroll-btn {
+      display: inline-flex;
+      width: 32px;
+      height: 32px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border-strong);
+      border-radius: 9999px;
+      background: var(--surface);
+      color: var(--foreground);
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .scroll-btn svg { width: 16px; height: 16px; }
+
+    .composer {
+      display: flex;
+      flex: none;
+      align-items: flex-end;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding: 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 24px;
+      background: var(--surface);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+    .composer:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--ring-focus); }
+    @media (max-width: 639px) { .composer { margin-bottom: 16px; } }
+
+    #question {
+      flex: 1;
+      min-width: 0;
+      min-height: 40px;
+      max-height: 240px;
+      padding: 8px 12px;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--foreground);
+      font-size: 16px;
+      line-height: 1.5;
+      resize: none;
+      overflow-y: auto;
+    }
+    #question::placeholder { color: var(--muted); }
+    #question:focus-visible { outline: 0; }
+
+    .send-btn {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      flex: none;
+      place-items: center;
+      border: 0;
+      border-radius: 16px;
+      background: var(--primary);
+      color: var(--primary-foreground);
+      cursor: pointer;
+      transition: background-color 150ms ease, opacity 150ms ease;
+    }
+    .send-btn:hover { background: var(--primary-hover); }
+    .send-btn:disabled { cursor: not-allowed; opacity: 0.3; }
+    .send-btn svg { width: 16px; height: 16px; }
+    .send-btn[data-mode="stop"] svg { width: 14px; height: 14px; fill: currentColor; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="page-header">
+      <div class="header-inner">
+        <h1>模型问答</h1>
+        <div class="endpoint-picker">
+          <button id="endpointTrigger" class="select-trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="endpointList" aria-label="选择接口">
+            <span id="endpointLabel">千问 · ChatClient</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <ul id="endpointList" class="select-list" role="listbox" aria-label="接口列表" tabindex="-1" hidden>
+            <li id="endpoint-0" class="select-option" role="option" aria-selected="true" data-path="/stream/chatModel/qwenSteamChatClient">千问 · ChatClient<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg></li>
+            <li id="endpoint-1" class="select-option" role="option" aria-selected="false" data-path="/stream/chatModel/qwenSteamChatModel">千问 · ChatModel<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg></li>
+            <li id="endpoint-2" class="select-option" role="option" aria-selected="false" data-path="/stream/chatModel/deepseekSteamChatClient">DeepSeek · ChatClient<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg></li>
+            <li id="endpoint-3" class="select-option" role="option" aria-selected="false" data-path="/stream/chatModel/deepseekSteamChatModel">DeepSeek · ChatModel<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m20 6-11 11-5-5"/></svg></li>
+          </ul>
+        </div>
+      </div>
+    </header>
+
+    <main class="chat" aria-label="模型问答">
+      <ol id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions"></ol>
+
+      <div id="scrollHint" class="scroll-hint" hidden>
+        <button id="scrollBtn" class="scroll-btn" type="button" aria-label="回到最新消息">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+        </button>
+      </div>
+
+      <div id="suggestions" class="suggestions" aria-label="提问示例">
+        <p class="suggestions-label">试试这样问</p>
+        <button type="button" class="suggestion" data-question="用一句话介绍 Spring AI Alibaba">用一句话介绍 Spring AI Alibaba</button>
+        <button type="button" class="suggestion" data-question="流式输出和普通接口返回有什么区别？">流式输出和普通接口返回有什么区别？</button>
+        <button type="button" class="suggestion" data-question="解释一下 Flux<String> 的作用">解释一下 Flux&lt;String&gt; 的作用</button>
+      </div>
+
+      <form id="composer" class="composer">
+        <label class="sr-only" for="question" hidden>提问内容</label>
+        <textarea id="question" rows="1" placeholder="输入你的问题" aria-label="提问内容"></textarea>
+        <button id="send" class="send-btn" type="submit" data-mode="send" aria-label="发送问题" disabled>
+          <svg id="sendIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+        </button>
+      </form>
+    </main>
+  </div>
+
+  <script>
+    // 静态页由 Spring Boot 提供时走同源相对路径；若用 file:// 直接打开，改成 http://localhost:8081
+    const API_BASE = '';
+    let apiPath = '/stream/chatModel/qwenSteamChatClient';
+
+    const endpointTrigger = document.getElementById('endpointTrigger');
+    const endpointLabel = document.getElementById('endpointLabel');
+    const endpointList = document.getElementById('endpointList');
+    const endpointOptions = Array.from(endpointList.querySelectorAll('[role="option"]'));
+    let highlightedIndex = 0;
+    let pickerOpen = false;
+    let pickerCloseTimer = null;
+
+    const messagesEl = document.getElementById('messages');
+    const form = document.getElementById('composer');
+    const input = document.getElementById('question');
+    const sendBtn = document.getElementById('send');
+    const sendIcon = document.getElementById('sendIcon');
+    const suggestionsEl = document.getElementById('suggestions');
+    const scrollHint = document.getElementById('scrollHint');
+    const scrollBtn = document.getElementById('scrollBtn');
+
+    const ARROW_UP = '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>';
+    const STOP_SQUARE = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+
+    let controller = null;
+    let streaming = false;
+    let activeAnswer = null;
+    let stickToBottom = true;
+
+    function autoGrow() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 240) + 'px';
+    }
+
+    function updateSendState() {
+      sendBtn.disabled = !streaming && input.value.trim().length === 0;
+      sendBtn.dataset.mode = streaming ? 'stop' : 'send';
+      sendBtn.setAttribute('aria-label', streaming ? '停止回答' : '发送问题');
+      sendIcon.innerHTML = streaming ? STOP_SQUARE : ARROW_UP;
+    }
+
+    function scrollToBottom(force) {
+      if (force || stickToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    messagesEl.addEventListener('scroll', function () {
+      const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+      stickToBottom = nearBottom;
+      scrollHint.hidden = !streaming || nearBottom;
+    });
+    scrollBtn.addEventListener('click', function () {
+      stickToBottom = true;
+      scrollHint.hidden = true;
+      scrollToBottom(true);
+    });
+
+    function addUserTurn(text) {
+      const li = document.createElement('li');
+      li.className = 'turn';
+      const bubble = document.createElement('div');
+      bubble.className = 'user-bubble';
+      bubble.textContent = text;
+      li.appendChild(bubble);
+      messagesEl.appendChild(li);
+      suggestionsEl.hidden = true;
+      scrollToBottom(true);
+    }
+
+    function addAssistantTurn() {
+      const li = document.createElement('li');
+      li.className = 'turn';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'answer-wrap';
+
+      const answer = document.createElement('div');
+      answer.className = 'answer';
+      answer.setAttribute('aria-busy', 'true');
+      const text = document.createElement('span');
+      text.className = 'answer-text';
+      const cursor = document.createElement('span');
+      cursor.className = 'cursor';
+      cursor.setAttribute('aria-hidden', 'true');
+      answer.append(text, cursor);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      actions.hidden = true;
+      actions.append(
+        makeIconButton('复制', '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', function (event) {
+          copyText(text.textContent, event.currentTarget);
+        }),
+        makeIconButton('重新生成', '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>', function () {
+          const question = li.dataset.question;
+          li.remove();
+          ask(question, true);
+        })
+      );
+
+      wrap.append(answer, actions);
+      li.appendChild(wrap);
+      messagesEl.appendChild(li);
+
+      activeAnswer = { li: li, wrap: wrap, answer: answer, text: text, cursor: cursor, actions: actions };
+      scrollToBottom(true);
+      return activeAnswer;
+    }
+
+    function makeIconButton(label, svg, onClick) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'icon-btn';
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + svg + '</svg>';
+      button.addEventListener('click', onClick);
+      return button;
+    }
+
+    function finishTurn(state) {
+      if (!activeAnswer) return;
+      activeAnswer.cursor.remove();
+      activeAnswer.answer.setAttribute('aria-busy', 'false');
+      if (state === 'stopped') {
+        const label = document.createElement('span');
+        label.className = 'stopped-label';
+        label.textContent = '已停止';
+        activeAnswer.actions.appendChild(label);
+      }
+      activeAnswer.actions.hidden = false;
+      activeAnswer = null;
+    }
+
+    function showError(message, retryQuestion) {
+      if (!activeAnswer) return;
+      activeAnswer.text.textContent = '';
+      activeAnswer.cursor.remove();
+      activeAnswer.answer.replaceWith(buildErrorBlock(message, retryQuestion));
+      activeAnswer = null;
+    }
+
+    function buildErrorBlock(message, retryQuestion) {
+      const block = document.createElement('div');
+      block.className = 'error-block';
+
+      const title = document.createElement('p');
+      title.className = 'error-title';
+      title.textContent = '助手暂时无法回答';
+
+      const reason = document.createElement('p');
+      reason.className = 'error-reason';
+      reason.textContent = message;
+
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'outline-btn';
+      retry.textContent = '重试';
+      retry.addEventListener('click', function () {
+        retry.closest('.turn').remove();
+        ask(retryQuestion, true);
+      });
+
+      block.append(title, reason, retry);
+      return block;
+    }
+
+    async function copyText(value, button) {
+      try {
+        await navigator.clipboard.writeText(value);
+        button.title = '已复制';
+        button.setAttribute('aria-label', '已复制');
+        setTimeout(function () {
+          button.title = '复制';
+          button.setAttribute('aria-label', '复制');
+        }, 1500);
+      } catch (error) {
+        button.title = '复制失败';
+      }
+    }
+
+    function appendText(value) {
+      if (!activeAnswer || !value) return;
+      activeAnswer.text.textContent += value;
+      scrollToBottom(false);
+    }
+
+    function consumeSse(buffer) {
+      let index;
+      while ((index = buffer.value.indexOf('\n')) !== -1) {
+        const line = buffer.value.slice(0, index);
+        buffer.value = buffer.value.slice(index + 1);
+        if (!line) continue;
+        if (line.startsWith('data:')) {
+          const data = line.slice(5).replace(/^ /, '');
+          if (data !== '[DONE]') appendText(data);
+        }
+      }
+    }
+
+    async function ask(question, reuseUserTurn) {
+      if (streaming || !question) return;
+      if (!reuseUserTurn) addUserTurn(question);
+      suggestionsEl.hidden = true;
+      stickToBottom = true;
+
+      const turn = addAssistantTurn();
+      turn.li.dataset.question = question;
+      controller = new AbortController();
+      streaming = true;
+      updateSendState();
+
+      try {
+        const response = await fetch(API_BASE + apiPath + '?msg=' + encodeURIComponent(question), {
+          headers: { Accept: 'text/event-stream, text/plain;q=0.9, */*;q=0.8' },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error('接口返回 ' + response.status + '，请检查服务是否已启动');
+        if (!response.body) throw new Error('当前浏览器不支持读取流式响应');
+
+        const isSse = (response.headers.get('content-type') || '').includes('text/event-stream');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        const buffer = { value: '' };
+
+        while (true) {
+          const result = await reader.read();
+          if (result.done) break;
+          const chunk = decoder.decode(result.value, { stream: true });
+          if (isSse) {
+            buffer.value += chunk;
+            consumeSse(buffer);
+          } else {
+            appendText(chunk.startsWith('data:') ? chunk.slice(5).replace(/^ /, '') : chunk);
+          }
+        }
+        const tail = decoder.decode();
+        if (tail) appendText(tail);
+        if (isSse && buffer.value.trim()) consumeSse({ value: buffer.value + '\n' });
+        finishTurn('done');
+      } catch (error) {
+        if (error.name === 'AbortError') finishTurn('stopped');
+        else showError(error.message || '请求失败，请稍后再试', question);
+      } finally {
+        controller = null;
+        streaming = false;
+        scrollHint.hidden = true;
+        updateSendState();
+        scrollToBottom(true);
+      }
+    }
+
+    input.addEventListener('input', autoGrow);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (streaming) return;
+      const question = input.value.trim();
+      if (!question) return;
+      input.value = '';
+      autoGrow();
+      ask(question, false);
+    });
+
+    sendBtn.addEventListener('click', function (event) {
+      if (streaming && controller) {
+        event.preventDefault();
+        controller.abort();
+      }
+    });
+
+    suggestionsEl.addEventListener('click', function (event) {
+      const button = event.target.closest('button[data-question]');
+      if (button) ask(button.dataset.question, false);
+    });
+
+    function setHighlight(index) {
+      highlightedIndex = (index + endpointOptions.length) % endpointOptions.length;
+      endpointOptions.forEach(function (option, i) {
+        option.classList.toggle('is-highlighted', i === highlightedIndex);
+      });
+      endpointList.setAttribute('aria-activedescendant', endpointOptions[highlightedIndex].id);
+      endpointOptions[highlightedIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    function openPicker() {
+      if (pickerCloseTimer) { clearTimeout(pickerCloseTimer); pickerCloseTimer = null; }
+      if (pickerOpen) return;
+      pickerOpen = true;
+      endpointList.hidden = false;
+      endpointTrigger.setAttribute('aria-expanded', 'true');
+      void endpointList.offsetWidth;
+      endpointList.classList.add('is-open');
+      const selected = endpointOptions.findIndex(function (option) {
+        return option.getAttribute('aria-selected') === 'true';
+      });
+      setHighlight(selected >= 0 ? selected : 0);
+      endpointList.focus();
+    }
+
+    function closePicker(returnFocus) {
+      if (!pickerOpen) return;
+      pickerOpen = false;
+      endpointList.classList.remove('is-open');
+      endpointTrigger.setAttribute('aria-expanded', 'false');
+      endpointList.removeAttribute('aria-activedescendant');
+      pickerCloseTimer = setTimeout(function () {
+        endpointList.hidden = true;
+        pickerCloseTimer = null;
+      }, 100);
+      if (returnFocus) endpointTrigger.focus();
+    }
+
+    function selectEndpoint(option) {
+      endpointOptions.forEach(function (item) {
+        item.setAttribute('aria-selected', String(item === option));
+      });
+      apiPath = option.dataset.path;
+      endpointLabel.textContent = option.firstChild.textContent.trim();
+      closePicker(true);
+    }
+
+    endpointTrigger.addEventListener('click', function () {
+      if (pickerOpen) closePicker(true);
+      else openPicker();
+    });
+    endpointTrigger.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openPicker();
+      }
+    });
+    endpointList.addEventListener('click', function (event) {
+      const option = event.target.closest('[role="option"]');
+      if (option) selectEndpoint(option);
+    });
+    endpointList.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown') { event.preventDefault(); setHighlight(highlightedIndex + 1); }
+      else if (event.key === 'ArrowUp') { event.preventDefault(); setHighlight(highlightedIndex - 1); }
+      else if (event.key === 'Home') { event.preventDefault(); setHighlight(0); }
+      else if (event.key === 'End') { event.preventDefault(); setHighlight(endpointOptions.length - 1); }
+      else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectEndpoint(endpointOptions[highlightedIndex]); }
+      else if (event.key === 'Escape') { event.preventDefault(); closePicker(true); }
+      else if (event.key === 'Tab') closePicker(false);
+    });
+    document.addEventListener('pointerdown', function (event) {
+      if (pickerOpen && !event.target.closest('.endpoint-picker')) closePicker(false);
+    });
+
+    autoGrow();
+    updateSendState();
+  </script>
+</body>
+</html>
